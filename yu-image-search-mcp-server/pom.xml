@@ -1,0 +1,386 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ╔══════════════════════════════════════════════════════════════════════╗
+  ║  pom.xml 是什么？                                                    ║
+  ║                                                                      ║
+  ║  pom = Project Object Model，项目对象模型。                          ║
+  ║  这个文件是 Maven 的"项目说明书"，Maven 读它来知道：                 ║
+  ║    1. 这个项目叫什么、版本是多少（身份）                              ║
+  ║    2. 需要用哪些第三方库（依赖）                                      ║
+  ║    3. 去哪里下载这些库（仓库）                                        ║
+  ║    4. 怎么编译、打包、测试（构建插件）                                ║
+  ║                                                                      ║
+  ║  Maven 三件事：依赖管理 + 构建自动化 + 仓库管理。                    ║
+  ║  这个文件把三件事都配齐了。                                           ║
+  ╚══════════════════════════════════════════════════════════════════════╝
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <!-- Maven POM 格式的版本号，固定写 4.0.0，不是项目版本，不要改 -->
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+      ══════════════════════════════════════════════════════
+      【第一部分】项目身份：GAV 坐标
+      ══════════════════════════════════════════════════════
+      Maven 用三个字段唯一标识一个项目，就像快递地址：
+        groupId    = 公司/组织，相当于"省市"
+        artifactId = 具体项目名，相当于"街道门牌"
+        version    = 版本号，相当于"几号楼"
+      三个合在一起叫 GAV 坐标（G-A-V），全球唯一。
+
+      别的项目想用你这个包，就写：
+        <groupId>com.example.springai</groupId>
+        <artifactId>yu-image-search-mcp-server</artifactId>
+        <version>1.0.0</version>
+
+      ⚠️ 本模块没有 <parent>，是独立项目（不继承课程根 pom）。
+         原因：课程根 pom 锁定了 Spring Boot 4.0.6 / Spring AI 2.0.1，
+               而本项目要和 yu-ai-agent 版本对齐（Boot 3.5.8 / AI 1.1.2），
+               版本不兼容，所以独立声明，自己管理所有版本。
+      ══════════════════════════════════════════════════════
+    -->
+    <groupId>com.example.springai</groupId>
+    <artifactId>yu-image-search-mcp-server</artifactId>
+    <version>1.0.0</version>
+    <name>yu-image-search-mcp-server</name>
+
+    <!--
+      ══════════════════════════════════════════════════════
+      【第二部分】properties：统一管理版本号变量
+      ══════════════════════════════════════════════════════
+      把版本号提取成变量，好处是：
+        - 升级版本只改这里一个地方，不用全文搜索替换
+        - 多个地方引用同一个版本，不会写错不一致
+
+      使用方式：${变量名}，例如 ${java.version} → 21
+
+      为什么这三个版本要对齐 yu-ai-agent？
+        本项目是 MCP Server，yu-ai-agent 是 MCP Client，
+        两个进程通过网络通信，如果 Spring AI 版本不一样，
+        接口协议可能不兼容，会出现莫名其妙的序列化/类找不到报错。
+      ══════════════════════════════════════════════════════
+    -->
+    <properties>
+        <java.version>21</java.version>
+        <!-- Spring Boot 版本：提供 Web 容器、自动配置等基础能力 -->
+        <spring.boot.version>3.5.8</spring.boot.version>
+        <!--
+          Spring AI 版本：必须与 yu-ai-agent 里的 spring-ai-starter-mcp-client 版本一致。
+          spring-ai-alibaba 1.1.2.0 内部依赖 Spring AI 核心 1.1.2，
+          MCP Server 端也要用同一个核心版本，否则两边类不兼容报错。
+        -->
+        <spring.ai.version>1.1.2</spring.ai.version>
+        <!-- 所有源码文件的编码格式，避免中文乱码 -->
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <!--
+      ══════════════════════════════════════════════════════
+      【第三部分】dependencyManagement：版本号仲裁中心
+      ══════════════════════════════════════════════════════
+      这里不是真正引入依赖，而是"声明版本号"。
+      下面 <dependencies> 里用到相同包时，就不需要再写版本号了。
+
+      这里引入的是 Spring Boot BOM（Bill of Materials，材料清单）。
+      BOM 是一个特殊的 pom 文件，里面已经写好了几百个常用库的版本号。
+      引入后，你用 spring-boot-starter-web、jackson、tomcat 等包时，
+      都不需要写版本号，Spring Boot 帮你统一管好，不会出现版本冲突。
+
+      类比：BOM 就像一份"官方推荐配方"，告诉你用什么版本的料最稳定。
+
+      scope=import + type=pom 是固定写法，表示"把这个 BOM 的版本表导入进来"。
+      ══════════════════════════════════════════════════════
+    -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring.boot.version}</version>
+                <type>pom</type>   <!-- 这是一个 pom 文件，不是 jar -->
+                <scope>import</scope> <!-- 把它的版本表"导入"到本项目 -->
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <!--
+      ══════════════════════════════════════════════════════
+      【第四部分】dependencies：真正引入的第三方库
+      ══════════════════════════════════════════════════════
+      每个 <dependency> 就是引入一个 jar 包。
+      Maven 会自动去仓库下载，放进 classpath，你就能 import 用了。
+
+      scope（作用域）说明：
+        不写（默认compile）= 编译+运行+测试都需要，打进最终 jar
+        test               = 只在测试时用，不打进最终 jar（如 JUnit）
+        provided           = 运行环境会提供（如 Servlet API），不打进 jar
+        runtime            = 只运行时需要，编译不需要
+
+      optional=true 表示：这个包不会传递给依赖本项目的其他项目。
+      ══════════════════════════════════════════════════════
+    -->
+    <dependencies>
+
+        <!--
+          spring-boot-starter-web：让这个项目变成一个 Web 服务器。
+          包含：Tomcat（内嵌服务器）+ Spring MVC（处理 HTTP 请求）+ Jackson（JSON 转换）。
+          SSE 模式的 MCP Server 通过 HTTP 接收来自 MCP Client 的工具调用请求，所以需要它。
+          版本由上面引入的 Spring Boot BOM 统一管理，不需要写版本号。
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!--
+          spring-ai-starter-mcp-server-webmvc：这是本项目的核心依赖，让项目变成 MCP Server。
+          它做了什么：
+            1. 扫描所有 @Tool 注解的方法，自动生成工具列表
+            2. 暴露 HTTP 端点（/sse 或 /mcp），MCP Client 通过这里调用工具
+            3. 处理 MCP 协议的握手、工具发现、调用、返回等完整流程
+          webmvc 表示基于 Spring MVC（同步模式），对应 spring-boot-starter-web。
+          （还有 webflux 变体，基于响应式，本项目不用）
+          因为 Spring Boot BOM 里没有这个包，所以必须手动写版本号。
+        -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-mcp-server-webmvc</artifactId>
+            <version>${spring.ai.version}</version>
+        </dependency>
+
+        <!--
+          Lombok：编译时自动生成样板代码的工具，让代码更简洁。
+          常用注解举例：
+            @Data     → 自动生成 getter/setter/toString/equals/hashCode
+            @Slf4j    → 自动注入 log 变量，可以直接写 log.info("xxx")
+            @Builder  → 自动生成建造者模式，链式创建对象
+          原理：编译时（javac 阶段）在字节码里插入代码，运行时没有性能损耗。
+          optional=true：Lombok 只在编译期用，不需要传递给依赖本项目的其他模块。
+        -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <version>1.18.38</version>
+            <optional>true</optional>
+        </dependency>
+
+        <!--
+          Hutool：国产 Java 工具库，封装了大量常用工具方法，避免重复造轮子。
+          本项目用到的功能：
+            HttpUtil   → 发送 HTTP 请求（调用 Pixabay API 就用这个）
+            JSONUtil   → 解析 JSON 响应
+            StrUtil    → 字符串判空等工具方法
+          类比：Hutool 就像瑞士军刀，一个库解决字符串/集合/HTTP/日期/加密等所有常见需求。
+        -->
+        <dependency>
+            <groupId>cn.hutool</groupId>
+            <artifactId>hutool-all</artifactId>
+            <version>5.8.38</version>
+        </dependency>
+
+        <!--
+          spring-boot-starter-test：测试用的工具包合集。
+          包含：JUnit 5（测试框架）+ Mockito（模拟对象）+ AssertJ（断言库）等。
+          scope=test 表示只在测试时用，不会打进最终的 jar 包，不影响生产环境。
+          版本由 Spring Boot BOM 管理，不需要写版本号。
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+    </dependencies>
+
+    <!--
+      ══════════════════════════════════════════════════════
+      【第五部分】repositories：告诉 Maven 去哪里下载依赖 jar 包
+      ══════════════════════════════════════════════════════
+      Maven 下载依赖的顺序：
+        1. 先查本地缓存（~/.m2/repository 目录）
+        2. 没有再按 repositories 里的顺序逐个去远程仓库找
+        3. 找到了下载回本地缓存，下次直接用缓存
+
+      为什么要配多个仓库？
+        - Maven 中央仓库（repo1.maven.org）：大多数开源库在这里
+        - Spring 官方仓库（repo.spring.io）：Spring AI 等新版本先在这里发布，
+          可能还没同步到中央仓库，所以要单独加
+
+      snapshots（快照版）说明：
+        enabled=false 表示不从这个仓库下载 SNAPSHOT 版本（带 -SNAPSHOT 后缀的不稳定版）。
+        我们只用正式发布版（release），更稳定。
+      ══════════════════════════════════════════════════════
+    -->
+    <repositories>
+        <!--
+          Spring Milestones 仓库：Spring 里程碑版本（M1/M2/RC 等预发布版）发布在这里。
+          spring-ai-starter-mcp-server-webmvc 1.1.2 就在这里，中央仓库还没有。
+        -->
+        <repository>
+            <id>spring-milestones</id>
+            <name>Spring Milestones</name>
+            <url>https://repo.spring.io/milestone</url>
+            <snapshots><enabled>false</enabled></snapshots>
+        </repository>
+
+        <!--
+          Spring Releases 仓库：Spring 正式发布版（GA 版）在这里。
+          与 Milestones 一起配，确保所有 Spring AI 相关包都能找到。
+        -->
+        <repository>
+            <id>spring-releases</id>
+            <name>Spring Releases</name>
+            <url>https://repo.spring.io/release</url>
+            <snapshots><enabled>false</enabled></snapshots>
+        </repository>
+
+        <!--
+          Maven 中央仓库：世界上最大的 Java 开源库仓库，Hutool/Lombok 等都在这里。
+          兜底用：Spring 仓库找不到的包，最后来这里找。
+        -->
+        <repository>
+            <id>maven-central</id>
+            <url>https://repo1.maven.org/maven2</url>
+            <snapshots><enabled>false</enabled></snapshots>
+        </repository>
+    </repositories>
+
+    <!--
+      ══════════════════════════════════════════════════════
+      【第六部分】pluginRepositories：告诉 Maven 去哪里下载插件
+      ══════════════════════════════════════════════════════
+      Maven 有两类东西需要下载：
+        1. 依赖（你的代码用的库）         → 从 <repositories> 下载
+        2. 插件（Maven 自己用的工具）      → 从 <pluginRepositories> 下载
+      两类分开配置，互不干扰。
+
+      ⚠️ 为什么要在这里配？
+        公司的 ~/.m2/settings.xml 里有一个旧的插件仓库地址：
+          http://nexus1.ariba.com:8081/...（注意是 http，不是 https）
+        Maven 3.8+ 出于安全原因，默认封锁所有 http:// 的仓库地址，
+        导致 Maven 下载 surefire 插件时，被这个旧地址拦截，报错：
+          "Blocked mirror for repositories: [ariba-releases (http://nexus1.ariba.com...)]"
+        解决办法：在项目 pom 里显式声明 https 的中央仓库，
+        Maven 优先用项目 pom 里的配置，就能绕过公司 settings.xml 里的旧地址。
+      ══════════════════════════════════════════════════════
+    -->
+    <pluginRepositories>
+        <!--
+          Maven 中央仓库（https 安全地址）：surefire、compiler 等官方插件都在这里。
+          用 https 不用 http，不会被 Maven 3.8+ 的安全机制封锁。
+        -->
+        <pluginRepository>
+            <id>maven-central-plugins</id>
+            <url>https://repo1.maven.org/maven2</url>
+            <releases><enabled>true</enabled></releases>    <!-- 下载正式版插件 -->
+            <snapshots><enabled>false</enabled></snapshots> <!-- 不下载不稳定的快照版 -->
+        </pluginRepository>
+    </pluginRepositories>
+
+    <!--
+      ══════════════════════════════════════════════════════
+      【第七部分】build/plugins：构建插件配置
+      ══════════════════════════════════════════════════════
+      插件是 Maven 的"工具箱"，每个插件负责一件事：
+        compiler-plugin  → 编译 Java 代码
+        surefire-plugin  → 运行测试
+        spring-boot-plugin → 打包成可执行 jar
+
+      Maven 有生命周期（lifecycle），按顺序执行：
+        compile（编译）→ test（测试）→ package（打包）→ install（安装到本地）→ deploy（发布）
+      运行 mvn package 会依次触发前三个阶段。
+      ══════════════════════════════════════════════════════
+    -->
+    <build>
+        <plugins>
+
+            <!--
+              maven-compiler-plugin：Java 编译器插件
+              负责把 .java 源码编译成 .class 字节码。
+
+              关键配置：
+                source/target/release = 21：指定用 Java 21 语法编译，
+                  三个都写是为了兼容不同 Maven 版本（release 是新参数，source/target 是旧参数）。
+                parameters = true：编译时保留方法参数名，
+                  Spring AI 的 @ToolParam 注解靠反射读取参数名来生成工具描述，
+                  不加这个配置，@ToolParam 读不到参数名，工具调用会报错。
+                annotationProcessorPaths：注解处理器路径。
+                  Lombok 是编译期注解处理器，必须在这里注册，
+                  否则 @Data/@Slf4j 等注解在编译阶段无法展开，报"找不到符号"错误。
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <configuration>
+                    <source>${java.version}</source>      <!-- 源码用的 Java 版本 -->
+                    <target>${java.version}</target>      <!-- 编译出的字节码目标版本 -->
+                    <release>${java.version}</release>    <!-- 一步到位指定版本（推荐） -->
+                    <parameters>true</parameters>         <!-- 保留参数名，@ToolParam 必须 -->
+                    <annotationProcessorPaths>
+                        <!-- 告诉编译器：处理注解时用这个 Lombok jar -->
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>1.18.38</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+
+            <!--
+              maven-surefire-plugin：测试执行插件
+              负责在 mvn test / mvn package 阶段自动运行所有 @Test 方法。
+
+              这里配置了 skipTests=true（跳过测试），原因：
+                公司 settings.xml 有旧的 http:// 插件仓库，Maven 3.8+ 封锁 http，
+                导致 surefire 运行时去下载 surefire-junit-platform 包时被封锁报错。
+                跳过后，mvn package 只编译打包，不运行测试，就不触发这个下载。
+
+              ✅ 跑测试的正确方式：
+                直接在 IDEA 里点测试方法旁边的绿色 ▶ 按钮。
+                IDEA 直接调用 JUnit 运行器，不走 Maven surefire，不受影响。
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.5</version>
+                <configuration>
+                    <skipTests>true</skipTests>
+                </configuration>
+            </plugin>
+
+            <!--
+              spring-boot-maven-plugin：Spring Boot 打包插件
+              负责把项目打成一个"fat-jar"（胖jar），即包含所有依赖的可执行 jar 文件。
+
+              普通 mvn package 打出来的 jar 不包含依赖，无法直接运行。
+              这个插件的 repackage 目标会把所有依赖 jar 一起塞进去，
+              打出来的 jar 可以直接 java -jar 运行，不需要额外配置 classpath。
+
+              这对本项目很重要：
+                yu-ai-agent 的 mcp-servers.json 里会配置：
+                  "command": "java", "args": ["-jar", "yu-image-search-mcp-server.jar"]
+                AI Agent 启动时直接拉起这个 jar 作为子进程，
+                必须是可以独立运行的 fat-jar，才不会报 ClassNotFoundException。
+            -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <version>${spring.boot.version}</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>repackage</goal> <!-- 重新打包：在普通 jar 外面套一层，变成可执行 fat-jar -->
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+        </plugins>
+    </build>
+
+</project>

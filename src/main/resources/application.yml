@@ -1,0 +1,133 @@
+# ═══════════════════════════════════════════════════════════════
+# 配置文件说明
+#
+# 【占位符取值顺序】${变量名:默认值}
+#   1. 先找环境变量（生产环境用这个注入 key）
+#   2. 再找 application-local.yml（本地开发用这个，已 gitignore 不提交）
+#   3. 都没有才用冒号后的默认值
+#
+# 【为什么 api-key 用 :not-configured 而不是空着】
+#   空着（${OPENAI_API_KEY}）→ 找不到时启动直接报错，项目跑不起来
+#   :not-configured        → 找不到时用占位字符串，启动正常
+#                            调用 API 时才报 401，更容易定位问题
+#
+# 【本地开发】真实 key 填在 application-local.yml（不提交 Git）
+# 【生产部署】export OPENAI_API_KEY=xxx && export AI_DASHSCOPE_API_KEY=xxx
+# ═══════════════════════════════════════════════════════════════
+
+spring:
+  application:
+    name: yu-ai-agent
+  profiles:
+    active: local   # 本地激活 local profile 加载真实 key；生产环境删掉此行
+  mvc:
+    async:
+      request-timeout: -1
+  # ── Redis 连接配置 ────────────────────────────────────────────
+  # 本地开发默认连 localhost:6379（无密码）
+  # 生产环境通过环境变量注入：export REDIS_HOST=xxx export REDIS_PASSWORD=xxx
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}   # 本地无密码留空，生产填密码
+
+  # ── MySQL 数据源配置 ──────────────────────────────────────────
+  # 用于 MysqlChatMemoryRepository（对话记忆持久化到数据库）
+  # 数据库需提前创建：CREATE DATABASE yuai_agent DEFAULT CHARACTER SET utf8mb4;
+  # 建表 SQL 见 src/main/resources/sql/init.sql，手动执行一次即可
+  # 生产环境通过环境变量注入：export MYSQL_URL=xxx export MYSQL_USERNAME=xxx ...
+  datasource:
+    url: ${MYSQL_URL:jdbc:mysql://localhost:3306/yupi?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai}
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_PASSWORD:root123456}         # 本地无密码留空，生产填密码
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  ai:
+    # ── 模型一：OpenAI 兼容协议 ──────────────────────────────────
+    # 适用：GPT、本地代理等支持 OpenAI 兼容接口的模型
+    # 对应 SDK：ChatClient（Spring AI 通用接口）
+    openai:
+      base-url: ${OPENAI_BASE_URL:http://localhost:6655/openai}
+      api-key: ${OPENAI_API_KEY:not-configured}
+      chat:
+        options:
+          model: ${OPENAI_MODEL:gpt-5.6-sol}
+
+    # ── 模型二：阿里云百炼 DashScope ─────────────────────────────
+    # 适用：通义千问系列（qwen-max / qwen-plus 等）
+    # 对应 SDK：DashScopeChatModel（Spring AI Alibaba）
+    # 注意：此 key 与 TestApiKey.java 中的 API_KEY 是同一个，修改时两处同步
+    dashscope:
+      api-key: ${AI_DASHSCOPE_API_KEY:not-configured}
+      chat:
+        options:
+          model: qwen-max
+
+    # ── pgVector 向量数据库（框架行为配置，不含敏感信息）──────────────
+    # 连接参数（jdbc-url / jdbc-username / jdbc-password）放在 application-local.yml
+    vectorstore:
+      pgvector:
+        initialize-schema: true         # 第一次启动自动建 vector_store 表；上线后可改 false
+        index-type: hnsw                # 近似最近邻索引，查询速度快
+        distance-type: cosine_distance  # 余弦相似度，语义检索最常用
+        dimensions: 1024                # 必须和 Embedding 模型输出维度一致（通义千问 text-embedding-v3 = 1024）
+
+    # ── MCP Client（通过 stdio 调用外部 MCP 服务器）──────────────────────
+    # toolcallback-provider 设为 true：把 MCP 工具自动注册为 Spring AI ToolCallback
+    # 这样 ChatClient 就能直接使用 MCP 服务器提供的工具，无需手动注册
+    mcp:
+      client:
+        enabled: false   # MCP server 未启动时设为 false，避免连接超时导致启动失败
+       #本地的mcp的调用
+        #stdio:
+          # 从 classpath 下的 mcp-servers.json 读取 MCP 服务器清单
+          #servers-configuration: classpath:mcp-servers.json
+        #sse:
+        #  connections:
+        #    server1:
+        #      url: http://localhost:8127
+        toolcallback:
+          enabled: false
+
+    # ── Embedding 模型选择（技术选型，不含敏感信息）─────────────────────
+    # 容器里同时存在 dashscopeEmbeddingModel 和 openAiEmbeddingModel 时
+    # 此配置禁用 openAi 的自动配置（@ConditionalOnProperty），只保留 dashscope
+    # PgVectorStoreConfig 里的 @Primary 是第二道保险，两者配合确保无歧义
+    model:
+      embedding: dashscope
+
+server:
+  port: 8123
+  servlet:
+    context-path: /api       # 所有接口统一加 /api 前缀
+
+# 接口文档（knife4j）启动后访问：http://localhost:8123/api/doc.html
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+  api-docs:
+    path: /v3/api-docs
+  group-configs:
+    - group: 'default'
+      paths-to-match: '/**'
+      packages-to-scan: com.yupi.yuaiagent.controller
+
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn
+
+#  级别从低到高：
+#  TRACE → DEBUG → INFO → WARN → ERROR
+logging:
+  level:
+    root: INFO  #全局门槛 INFO
+    "[org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor]": DEBUG  # 单独给这个类降到 DEBUG。改为 DEBUG 才能看到 SimpleLoggerAdvisor 的请求/响应日志
+
+# searchAPI 网页搜索
+# 真实 api-key 填在 application-local.yml（不提交 Git）
+# 免费注册：https://www.searchapi.io （免费 100 次/月）
+search-api:
+  api-key: ${SEARCH_API_KEY:not-configured}

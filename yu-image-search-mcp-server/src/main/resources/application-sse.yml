@@ -1,0 +1,32 @@
+spring:
+  ai:
+    mcp:
+      server:
+        # 【服务名称】同 stdio 配置，MCP Client 连接后看到的服务招牌
+        name: yu-image-search-mcp-server
+
+        # 【版本号】与 stdio 配置保持一致
+        version: 0.0.1
+
+        # 【处理模式】SSE 模式同样使用 SYNC 同步处理
+        type: SYNC
+
+        # 【通信方式：SSE 模式】
+        # SSE = Server-Sent Events，服务器推送事件，一种基于 HTTP 的单向推送技术
+        #
+        # 工作原理：
+        #   Client 通过 HTTP 连接到本服务器，服务器保持连接不断开
+        #   有结果时通过这条长连接"推送"给 Client，就像订阅了一个新闻频道
+        #   Client 订阅后坐等服务器主动推消息过来
+        #
+        # 与 stdio 的区别：
+        #   stdio：只能在同一台机器上用（父子进程通信），不能跨网络
+        #   SSE：通过 HTTP 端口对外服务，Client 和 Server 可以在不同机器上
+        #
+        # stdio: false → 关闭 stdio 模式，Spring Boot 正常启动 HTTP 服务器，走网络通信
+        stdio: false
+
+  server:
+    # 【HTTP 端口】SSE 模式需要监听网络端口，Client 通过 http://localhost:8081 访问
+    # 改成 8081 避免和 yu-ai-agent（默认 8080）端口冲突，两个服务同时启动不报错
+    port: 8081

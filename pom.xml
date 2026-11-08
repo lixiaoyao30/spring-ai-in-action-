@@ -1,0 +1,286 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <!--
+    ⚠️ 本模块已脱离父 pom，独立管理版本。
+    原因：Spring AI Alibaba 1.1.2.0 要求 Spring Boot 3.5.x，
+          父 pom 锁定的是 Boot 4.0.6，版本不兼容，故独立声明。
+  -->
+  <groupId>com.example.springai</groupId>
+  <artifactId>yu-ai-agent</artifactId>
+  <version>1.0.0</version>
+  <name>08-yu-ai-agent</name>
+
+  <properties>
+    <java.version>21</java.version>
+    <spring.boot.version>3.5.8</spring.boot.version>
+    <spring.ai.alibaba.version>1.1.2.0</spring.ai.alibaba.version>
+    <!--
+      LangChain4j 版本说明：
+        BOM 用 1.0.0，它内部指定 starter 版本为 1.0.0-beta5
+        不使用 1.0.0 正式版 starter，因为本地只缓存了 beta5，离线可用
+      官方文档：https://docs.langchain4j.dev/get-started
+      Spring Boot 集成：https://docs.langchain4j.dev/tutorials/spring-boot-integration
+    -->
+    <langchain4j.version>1.0.0</langchain4j.version>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <!-- Spring Boot BOM：统一管理 Boot 相关依赖版本 -->
+      <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-dependencies</artifactId>
+        <version>${spring.boot.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <!--
+        LangChain4j BOM：统一管理所有 langchain4j 模块版本
+        引入后下面的 langchain4j 依赖都不需要写版本号
+        ⚠️ 与 Spring AI 不冲突：LangChain4j 是独立框架，两套 API 互不干扰
+           唯一共享的是 Spring Boot 本身，版本由上面的 Boot BOM 统一管理
+      -->
+      <dependency>
+        <groupId>dev.langchain4j</groupId>
+        <artifactId>langchain4j-bom</artifactId>
+        <version>${langchain4j.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <dependencies>
+    <!-- Web -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+
+    <!-- ① 模型接入：连接通义千问 DashScope -->
+    <dependency>
+      <groupId>com.alibaba.cloud.ai</groupId>
+      <artifactId>spring-ai-alibaba-starter-dashscope</artifactId>
+      <version>${spring.ai.alibaba.version}</version>
+    </dependency>
+
+    <!--
+      ② 模型接入：连接 OpenAI（GPT / 任何 OpenAI 兼容接口）
+      版本必须和 SAA 依赖的 Spring AI 核心版本一致（1.1.2），否则启动报错：
+        - spring-ai-starter-model-openai:2.0.1 需要 Boot 4.x → 与本项目 Boot 3.5.x 冲突
+        - spring-ai-starter-model-openai:1.0.1 与核心 1.1.2 不匹配
+        - spring-ai-starter-model-openai:1.1.2 ✅ 与 SAA 依赖的 Spring AI 核心版本一致
+      Bean 名固定为 openAiChatModel，yml 里配 spring.ai.openai.* 即可
+    -->
+    <dependency>
+      <groupId>org.springframework.ai</groupId>
+      <artifactId>spring-ai-starter-model-openai</artifactId>
+      <version>1.1.2</version>
+    </dependency>
+
+    <!-- ② Agent 编排：ReactAgent、工具调用、对话记忆 -->
+    <dependency>
+      <groupId>com.alibaba.cloud.ai</groupId>
+      <artifactId>spring-ai-alibaba-agent-framework</artifactId>
+      <version>${spring.ai.alibaba.version}</version>
+    </dependency>
+
+    <!--
+      ③ LangChain4j：另一套 AI 框架，与 Spring AI 互不冲突，可同时使用
+         两者区别：
+           Spring AI  → Spring 生态原生，配置简单，换模型改 yml
+           LangChain4j → 功能更丰富，RAG / Agent / 工具调用 API 更成熟
+         版本由上面的 langchain4j-bom 统一管理，这里不写版本号
+         官方文档：https://docs.langchain4j.dev/get-started
+    -->
+
+    <!-- LangChain4j Spring Boot 核心集成（提供自动装配、@AiService 等） -->
+    <dependency>
+      <groupId>dev.langchain4j</groupId>
+      <artifactId>langchain4j-spring-boot-starter</artifactId>
+    </dependency>
+
+    <!-- LangChain4j OpenAI 模型接入（支持 GPT 及任何 OpenAI 兼容接口） -->
+    <dependency>
+      <groupId>dev.langchain4j</groupId>
+      <artifactId>langchain4j-open-ai-spring-boot-starter</artifactId>
+    </dependency>
+
+    <!-- 支持结构化输出：把 Java 类转成 JSON Schema 格式指令 -->
+    <dependency>
+      <groupId>com.github.victools</groupId>
+      <artifactId>jsonschema-generator</artifactId>
+      <version>4.38.0</version>
+    </dependency>
+
+    <!--
+      Redis：用于持久化对话记忆
+      spring-boot-starter-data-redis 自动装配 StringRedisTemplate
+      使用前在 application.yml 配置 spring.data.redis.host/port
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-data-redis</artifactId>
+    </dependency>
+
+    <!-- JDBC：用于 MySQL 持久化对话记忆（MysqlChatMemoryRepository） -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-data-jdbc</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.mysql</groupId>
+      <artifactId>mysql-connector-j</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+
+    <!-- PostgreSQL 驱动（Supabase pgVector 连接用） -->
+    <dependency>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <!-- Spring AI pgVector 向量数据库支持 -->
+    <dependency>
+      <groupId>org.springframework.ai</groupId>
+      <artifactId>spring-ai-starter-vector-store-pgvector</artifactId>
+      <version>1.1.2</version>
+    </dependency>
+
+    <!--
+      RAG 文档读取：MarkdownDocumentReader
+      用于读取 src/main/resources/documents/*.md 知识库文件
+      按 Markdown 标题自动切割成 Document 块，供向量化存储
+      注意：Spring AI BOM 未管理此模块，需显式写版本号
+    -->
+    <dependency>
+      <groupId>org.springframework.ai</groupId>
+      <artifactId>spring-ai-markdown-document-reader</artifactId>
+      <version>1.0.0</version>
+    </dependency>
+
+    <!-- 原有依赖保留 -->
+    <dependency>
+      <groupId>com.alibaba</groupId>
+      <artifactId>dashscope-sdk-java</artifactId>
+      <version>2.23.1</version>
+    </dependency>
+    <dependency>
+      <groupId>cn.hutool</groupId>
+      <artifactId>hutool-all</artifactId>
+      <version>5.8.38</version>
+    </dependency>
+    <dependency>
+      <groupId>org.projectlombok</groupId>
+      <artifactId>lombok</artifactId>
+      <version>1.18.38</version>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>com.github.xiaoymin</groupId>
+      <artifactId>knife4j-openapi3-jakarta-spring-boot-starter</artifactId>
+      <version>4.5.0</version>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+    <!--
+      MCP（Model Context Protocol）客户端自动装配
+      ─────────────────────────────────────────────
+      spring-ai-starter-mcp-client  = "一站式 starter"，包含：
+        1. spring-ai-mcp              ← MCP 协议核心 API
+                                         (McpClient、McpSchema、
+                                          SyncMcpToolCallbackProvider 等类)
+        2. spring-ai-mcp-client-core  ← MCP 客户端业务逻辑
+        3. spring-ai-mcp-client-webflux ← HTTP/SSE 传输层（连接 MCP server）
+        4. spring-boot-autoconfigure  ← 读取 mcp-servers.json / yml，
+                                         自动注册 McpClient Bean
+
+      ⚠️ 下面的 spring-ai-mcp 已经被 starter 传递依赖，单独再声明是冗余的。
+         保留它的唯一理由：IDE 编译时能直接跳转到核心 API 源码（可选，不影响运行）。
+
+      使用建议：
+        - 绝大多数场景：只保留 spring-ai-starter-mcp-client 即可
+        - 纯手动构造 McpClient（不要自动装配）：只保留 spring-ai-mcp
+        - 两者都写：功能等价于只写 starter，starter 优先
+    -->
+    <dependency>
+      <groupId>org.springframework.ai</groupId>
+      <artifactId>spring-ai-starter-mcp-client</artifactId>
+      <version>1.1.2</version>
+    </dependency>
+    <!--
+      spring-ai-mcp 核心库（已被上面的 starter 传递依赖，此处声明冗余）
+      保留原因：让 IDE 能直接索引到 SyncMcpToolCallbackProvider、
+               McpToolCallback 等核心类的源码，便于阅读和调试。
+      如不需要 IDE 跳源码，可删除此条，不影响任何功能。
+    -->
+    <dependency>
+      <groupId>org.springframework.ai</groupId>
+      <artifactId>spring-ai-mcp</artifactId>
+      <version>1.1.2</version>
+    </dependency>
+
+    <!-- 网页抓取：解析 HTML，提取正文内容 -->
+    <dependency>
+      <groupId>org.jsoup</groupId>
+      <artifactId>jsoup</artifactId>
+      <version>1.19.1</version>
+    </dependency>
+
+    <!-- PDF 生成：Apache PDFBox，零外部依赖，支持中文 -->
+    <dependency>
+      <groupId>org.apache.pdfbox</groupId>
+      <artifactId>pdfbox</artifactId>
+      <version>3.0.4</version>
+    </dependency>
+
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.13.0</version>
+        <configuration>
+          <source>${java.version}</source>
+          <target>${java.version}</target>
+          <release>${java.version}</release>
+          <parameters>true</parameters>
+          <!-- Lombok 需要在 Maven 编译时注册注解处理器，否则 @Slf4j/@Data 等不生效 -->
+          <annotationProcessorPaths>
+            <path>
+              <groupId>org.projectlombok</groupId>
+              <artifactId>lombok</artifactId>
+              <version>1.18.38</version>
+            </path>
+          </annotationProcessorPaths>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+        <version>${spring.boot.version}</version>
+        <executions>
+          <execution>
+            <goals>
+              <goal>repackage</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+
+
+</project>

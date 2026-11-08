@@ -1,0 +1,98 @@
+# ══════════════════════════════════════════════════════════════════════════
+# application.yml —— 基础配置文件（所有环境都会加载）
+# ══════════════════════════════════════════════════════════════════════════
+#
+# 【yml 是什么？为什么用它？】
+#
+#   yml（YAML Ain't Markup Language）是一种配置文件格式，
+#   比 properties 文件更简洁，用缩进表示层级关系。
+#
+#   作用：把"可变的参数"从代码里分离出来，放到这里统一管理。
+#   好处：换环境（开发/测试/生产）只改配置文件，不改代码不重新编译。
+#
+#   对比示例：
+#     没有配置文件：String port = "8081";  // 写死在代码里，改了要重新打包
+#     有了 yml：  server.port: 8081        // 改这里，重启就生效
+#
+# ══════════════════════════════════════════════════════════════════════════
+# 【Spring Boot yml 怎么控制 Bean？自动配置原理】
+#
+#   Spring Boot 有一套"自动配置（Auto-Configuration）"机制：
+#   框架内部已经写好了大量"如果 yml 里配了 xxx，就自动创建 yyy Bean"的逻辑。
+#   你只需要在 yml 里填写参数，框架帮你创建 Bean，不需要手写 @Bean 方法。
+#
+#   原理（@ConditionalOnProperty 条件注解）：
+#     Spring AI 框架源码里大概是这样：
+#
+#       @Configuration
+#       @ConditionalOnProperty(   ← "当且仅当 yml 里配了这个属性时，下面才执行"
+#           prefix = "spring.ai.openai",
+#           name = "api-key"
+#       )
+#       public class OpenAiAutoConfiguration {
+#           @Bean("openAiChatModel")
+#           public ChatModel openAiChatModel(...) {
+#               return new OpenAiChatModel(...);  // 自动创建 Bean
+#           }
+#       }
+#
+#   所以：yml 里配了 spring.ai.openai.api-key → openAiChatModel Bean 自动存在
+#         yml 里没配                           → 这个 Bean 根本不存在
+#
+#   不只是 Spring AI，Spring Boot 内置的所有 Bean 都遵循这个规则：
+#     配了 spring.datasource.*  → DataSource（数据库连接池）Bean 自动创建
+#     配了 spring.data.redis.*  → StringRedisTemplate Bean 自动创建
+#     配了 spring.ai.openai.*   → openAiChatModel Bean 自动创建（Spring AI）
+#
+# ══════════════════════════════════════════════════════════════════════════
+# 【Profile 机制是什么？怎么用 yml 切换不同配置？】
+#
+#   同一个程序在不同场景下需要不同配置：
+#     stdio 模式（作为子进程被父进程调用）：不启 Tomcat，关掉 Banner，关掉日志到 stdout
+#     sse 模式（独立部署，对外提供 HTTP 服务）：启 Tomcat，监听 8081 端口
+#
+#   Spring Boot Profile 文件命名规则：
+#     application.yml            → 基础配置，所有情况都加载（就是本文件）
+#     application-stdio.yml      → 文件名带 "-stdio"，激活 stdio Profile 时追加加载
+#     application-sse.yml        → 文件名带 "-sse"，激活 sse Profile 时追加加载
+#
+#   追加加载的意思：
+#     先加载 application.yml（基础配置）
+#     再加载 application-stdio.yml（Profile 配置，相同的 key 会覆盖基础配置）
+#
+#   怎么激活 Profile？有 3 种方式：
+#     方式1：在本文件写 spring.profiles.active（↓ 下面就是这样配的）
+#     方式2：启动命令加参数 --spring.profiles.active=stdio
+#     方式3：JVM 参数 -Dspring.profiles.active=stdio
+#
+#   本项目的特殊情况：
+#     mcp-servers.json 里启动子进程的命令是：
+#       java -Dspring.ai.mcp.server.stdio=true -jar xxx.jar
+#     这个 JVM 参数触发 Spring AI 自动激活 stdio Profile，
+#     等价于 -Dspring.profiles.active=stdio，所以 application-stdio.yml 会被加载。
+#
+# ══════════════════════════════════════════════════════════════════════════
+
+spring:
+  application:
+    # 应用名称，用于日志标识、服务注册等场景
+    # 这里的名字会出现在日志前缀里，方便区分多个服务的日志
+    name: yu-image-search-mcp-server
+
+  profiles:
+    # 默认激活 stdio Profile，即启动时自动加载 application-stdio.yml
+    #
+    # 为什么默认用 stdio？
+    #   本项目最常用的场景是被 yu-ai-agent 当作子进程调用（stdio 模式）
+    #   如果你想独立部署（SSE 模式），把这里改成 sse，或者用命令行参数覆盖
+    #
+    # 切换方式：
+    #   改成 sse  → 启动后监听 8081 端口，外部可通过 HTTP 访问
+    #   改成 stdio → 通过 stdin/stdout 管道通信，被父进程调用
+    # active: stdio
+    active: sse
+server:
+  # HTTP 端口（仅 sse 模式生效，stdio 模式下 web-application-type=none 不启 Tomcat）
+  # 设为 8127 避免和 yu-ai-agent（默认 8080）端口冲突
+  # stdio 模式下这行配置完全无效，写在这里只是备用（切换到 sse 模式时用到）
+  port: 8127

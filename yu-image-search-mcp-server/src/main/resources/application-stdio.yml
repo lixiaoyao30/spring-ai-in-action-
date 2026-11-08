@@ -1,0 +1,119 @@
+# ══════════════════════════════════════════════════════════════════════════
+# application-stdio.yml —— stdio 模式专用配置
+# ══════════════════════════════════════════════════════════════════════════
+#
+# 【这个文件什么时候被加载？】
+#
+#   当 stdio Profile 被激活时，Spring Boot 在加载 application.yml 之后，
+#   额外追加加载本文件。相同 key 以本文件为准（覆盖 application.yml）。
+#
+#   激活方式（三选一，效果相同）：
+#     1. application.yml 里写：spring.profiles.active: stdio  ← 本项目用这个
+#     2. 启动命令：java -jar xxx.jar --spring.profiles.active=stdio
+#     3. JVM 参数：java -Dspring.profiles.active=stdio -jar xxx.jar
+#
+# ══════════════════════════════════════════════════════════════════════════
+# 【stdio 模式是什么？和 SSE 模式有什么区别？】
+#
+#   MCP Server 有两种通信方式，就像两种"上班方式"：
+#
+#   stdio 模式（本文件配置的模式）：
+#     = 在父进程的"内部"工作，通过管道通信
+#     = 父进程用 ProcessBuilder 把本程序作为子进程启动
+#     = 父进程通过 stdin 发指令，子进程通过 stdout 返回结果
+#     = 只能在同一台机器上用（父子进程在同一台机器）
+#     = 适合：开发调试、本机运行的 AI Agent
+#     类比：公司内部员工，在同一栋楼里，走廊喊一声就能传话
+#
+#   SSE 模式（application-sse.yml 配置的模式）：
+#     = 独立部署，对外提供 HTTP 服务
+#     = Client 通过 HTTP 连接，服务器通过长连接推送结果
+#     = 可以在不同机器上，通过网络调用
+#     = 适合：生产环境、多个 AI Agent 共用一个工具服务
+#     类比：外包公司，有自己的办公室，客户通过电话/邮件委托任务
+#
+# ══════════════════════════════════════════════════════════════════════════
+# 【stdout 纯净性——为什么这 3 个配置缺一不可？】
+#
+#   父子进程通过 stdout 管道传递 MCP 协议数据（JSON-RPC 格式）。
+#   stdout 里必须只有 JSON，一个多余字符都不行，否则父进程解析 JSON 失败崩溃。
+#
+#   3 个"污染源"必须全部关掉：
+#     污染源1：Spring Boot 启动 Banner（大字 ASCII 图案）→ banner-mode: off 关掉
+#     污染源2：Logback 日志输出到 console（stdout）   → -Dlogging.pattern.console= 关掉
+#     污染源3：Tomcat 启动信息                        → web-application-type: none 根本不启 Tomcat
+#
+#   关掉后的效果：
+#     stdout 里只有这样的内容：
+#       {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05",...}}
+#       {"jsonrpc":"2.0","id":2,"result":{"tools":[...]}}
+#     父进程收到，完美解析，一切正常。
+#
+# ══════════════════════════════════════════════════════════════════════════
+
+spring:
+  ai:
+    mcp:
+      server:
+        # ── 服务名称 ──────────────────────────────────────────────────────
+        # 握手时通过 serverInfo.name 告诉父进程"我叫什么"
+        # 父进程日志里会显示：Info: Implementation[name=yu-image-search-mcp-server]
+        # 就像员工的工牌名字，让老板知道来对了人
+        name: yu-image-search-mcp-server
+
+        # ── 版本号 ────────────────────────────────────────────────────────
+        # 格式：主版本.次版本.补丁（Semantic Versioning，语义化版本）
+        # 握手时告知父进程，父进程可以据此判断是否兼容
+        # 0.0.1 表示初始开发版本，还不稳定
+        version: 0.0.1
+
+        # ── 处理模式 ──────────────────────────────────────────────────────
+        # SYNC（同步）：父进程发请求 → 等待 → 子进程处理完 → 返回结果
+        #              就像打电话：说完话等对方回答，整个过程阻塞等待
+        # ASYNC（异步）：父进程发请求后立刻继续干别的，子进程处理完后主动通知
+        #              就像发短信：发完不等，对方回了再看
+        # stdio 模式下用 SYNC 足够，结构简单，调试方便
+        type: SYNC
+
+        # ── 通信方式 ──────────────────────────────────────────────────────
+        # stdio: true  → 启用 stdio 模式
+        #   框架启动后开启 stdin 监听器：
+        #     不断从 System.in（stdin）读取数据
+        #     每读到一行 JSON → 解析为 JSON-RPC 消息 → 找对应处理器 → 执行 → 通过 stdout 回复
+        #   不开放任何 HTTP 端口，完全依赖管道通信
+        #
+        # stdio: false → 关闭 stdio 模式，改走 HTTP/SSE（见 application-sse.yml）
+        stdio: true
+
+  main:
+    # ── 关闭 Web 服务器 ───────────────────────────────────────────────────
+    # Spring Boot 默认行为：检测到 spring-boot-starter-web 依赖就启动 Tomcat
+    # Tomcat 启动后监听 8080 端口，等待 HTTP 请求
+    #
+    # stdio 模式根本用不到 HTTP：
+    #   通信走管道（stdin/stdout），不走网络，开 Tomcat 纯属浪费
+    #   还会输出 "Tomcat started on port 8080" 到日志（虽然是 stderr，但占用端口）
+    #
+    # none    = 不启动任何 Web 服务器（stdio 模式用这个）
+    # servlet = 启动 Tomcat（传统 Web 应用，SSE 模式用这个）
+    # reactive = 启动 Netty（响应式 Web 应用，本项目不用）
+    web-application-type: none
+
+    # ── 关闭启动 Banner ───────────────────────────────────────────────────
+    # Spring Boot 默认在启动时往 stdout 打印：
+    #
+    #   .   ____          _            __ _ _
+    #  /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+    # ( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+    #  \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+    #   '  |____| .__|_| |_|_| |_\__, | / / / /
+    #  =========|_|==============|___/=/_/_/_/
+    #
+    # 这段图案如果出现在 stdout，父进程解析 JSON 时第一个字符是 '.'，
+    # 不是 '{'，直接报 JsonParseException 崩溃。
+    #
+    # off    = 完全关闭（stdio 模式必须用这个）
+    # console = 只打印到控制台（默认值）
+    # log    = 只写到日志文件（不出现在控制台/stdout）
+    banner-mode: off
+

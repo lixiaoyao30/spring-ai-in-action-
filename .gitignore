@@ -1,0 +1,35 @@
+# Maven build output
+target/
+*.class
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Node.js
+node_modules/
+dist/
+.npm/
+
+# Temp files
+tmp/
+*.tmp
+*.log
+
+# Secrets - NEVER commit these
+application-local.yml
+application-local*.yml
+*.env
+.env
+
+# macOS
+.DS_Store
+
+# MCP server build output
+yu-image-search-mcp-server/node_modules/
+yu-image-search-mcp-server/dist/
+
+# Frontend build
+yu-ai-agent-frontend/node_modules/
+yu-ai-agent-frontend/dist/

@@ -1,0 +1,830 @@
+════════════════════════════════════════════════════════════════════
+  Java 语法知识点手册 —— 配合 BaseAgent 项目理解
+  适合人群：零基础小白 / 面试备考
+════════════════════════════════════════════════════════════════════
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【知识点①】抽象类 abstract
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+什么是抽象类？
+  抽象类 = "半成品模板"，定义了规则，但有些方法留给子类来实现。
+
+特性：
+  ❌ 不能直接 new（半成品不能直接用）
+  ✅ 可以有普通属性、普通方法、构造方法
+  ✅ 可以有抽象方法（只有声明，没有方法体）
+
+代码示例：
+
+  public abstract class Animal {
+      private String name;
+
+      public Animal(String name) {         // ✅ 可以有构造方法
+          this.name = name;
+      }
+
+      public void eat() {                  // ✅ 普通方法（有实现）
+          System.out.println(name + " 在吃东西");
+      }
+
+      public abstract void makeSound();    // ✅ 抽象方法（无实现，子类必须重写）
+  }
+
+继承规则：
+  抽象类继承抽象类 → 可以不实现父类的抽象方法（继续往下传）
+  具体类继承抽象类 → 必须实现所有未实现的抽象方法，否则编译报错
+
+  public abstract class Dog extends Animal {
+      public Dog(String name) { super(name); }
+      // makeSound() 还没实现，因为 Dog 也是抽象类，可以继续往下传
+  }
+
+  public class Husky extends Dog {          // 具体类，必须实现
+      public Husky(String name) { super(name); }
+
+      @Override
+      public void makeSound() {             // ✅ 必须实现，否则编译报错
+          System.out.println("汪汪汪！");
+      }
+  }
+
+本项目的继承链：
+
+  BaseAgent（抽象）    → 声明 step()，不实现
+      ↑
+  ReActAgent（抽象）   → 实现 step()，声明 think() / act()
+      ↑
+  ToolCallAgent（抽象）→ 实现 think() / act()
+      ↑
+  YuManus（具体类）    → @Component，可以被 Spring 实例化 ✅
+
+多态（运行时调用子类方法）：
+  BaseAgent 里写 step()，运行时 JVM 自动找到 YuManus 的真实实现来执行。
+  就像老板说"去完成任务"，具体怎么做由员工（子类）决定。
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【知识点②】try / catch / finally / throw / throws
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+核心规则（最重要！）：
+  一旦某行代码出错，这一行之后的代码【不会执行】，程序立刻"跳走"去找 catch。
+
+─── 没有 try-catch：程序直接崩溃 ────────────────────────────────
+
+  public static void main(String[] args) {
+      System.out.println("第1步：开始");       // ✅ 执行
+      int result = 10 / 0;                      // ❌ 出错！
+      System.out.println("第2步：计算完成");    // ❌ 不执行（跳过）
+      System.out.println("第3步：结束");        // ❌ 不执行（跳过）
+  }
+  输出：
+    第1步：开始
+    Exception in thread "main" java.lang.ArithmeticException: / by zero
+
+─── 有 try-catch：接住错误，程序继续跑 ──────────────────────────
+
+  public static void main(String[] args) {
+      System.out.println("第1步：开始");        // ✅ 执行
+      try {
+          int result = 10 / 0;                   // ❌ 出错，立刻跳到 catch
+          System.out.println("第2步：完成");     // ❌ 不执行（被跳过）
+      } catch (ArithmeticException e) {
+          System.out.println("出错啦：不能除以0"); // ✅ 跳到这里处理
+      }
+      System.out.println("第3步：结束");         // ✅ 继续执行！
+  }
+  输出：
+    第1步：开始
+    出错啦：不能除以0
+    第3步：结束
+
+执行顺序对照表：
+  ┌──────────────────────────┬──────────┬───────────────────┐
+  │ 位置                     │ 是否执行 │ 原因              │
+  ├──────────────────────────┼──────────┼───────────────────┤
+  │ try 里出错行之前          │ ✅ 执行  │ 还没出错          │
+  │ try 里出错行本身          │ ❌ 中断  │ 出错，立刻跳走    │
+  │ try 里出错行之后          │ ❌ 跳过  │ 被跳过            │
+  │ catch 里的代码            │ ✅ 执行  │ 专门来处理错误    │
+  │ try-catch 之后的代码      │ ✅ 执行  │ 错误已处理，继续  │
+  └──────────────────────────┴──────────┴───────────────────┘
+
+─── finally：无论如何都执行 ─────────────────────────────────────
+
+  try {
+      System.out.println("尝试执行");
+      int result = 10 / 0;               // ❌ 出错
+  } catch (ArithmeticException e) {
+      System.out.println("捕获到错误");
+  } finally {
+      System.out.println("我一定会执行！"); // ✅ 出不出错都执行
+  }
+  输出：
+    尝试执行
+    捕获到错误
+    我一定会执行！
+
+  用途：关闭文件、关闭数据库连接、释放锁——资源清理必须放 finally。
+  原因：放在 try 末尾，出异常时会被跳过导致资源泄漏；finally 绝对不会漏。
+
+─── throw vs throws（面试必考）─────────────────────────────────
+
+  throw（动词）= 方法体内主动扔出一个异常，程序立刻跳到 catch
+
+    if (age < 0) {
+        throw new Exception("年龄不能为负！");  // 立刻跳走，后面代码不执行
+    }
+
+  throws（名词）= 方法签名上声明"我可能会抛这种异常"，调用方要做好准备
+
+    public void readFile() throws IOException {
+        // 调用方必须 try-catch 或继续往上 throws，否则编译不过
+    }
+
+  一句话记住：
+    throw  = 动词，"我现在扔！"  写在方法体内
+    throws = 名词，"我可能会扔"  写在方法签名上
+
+─── 异常往上传的完整例子 ────────────────────────────────────────
+
+  // 方法A：发现问题，throw 扔出，用 throws 声明不处理往上传
+  public static void checkAge(int age) throws Exception {
+      System.out.println("开始检查年龄");
+      if (age < 0) {
+          throw new Exception("年龄不能为负！");   // 主动抛出
+      }
+      System.out.println("年龄正常：" + age);      // 出错时不执行
+  }
+
+  public static void main(String[] args) {
+      System.out.println("程序开始");
+      try {
+          checkAge(-5);                            // 调用 A，A 抛出的异常在这里被接住
+          System.out.println("检查通过");           // ❌ 不执行（checkAge 出错了）
+      } catch (Exception e) {
+          System.out.println("处理：" + e.getMessage()); // ✅ 执行
+      }
+      System.out.println("程序结束");              // ✅ 继续执行
+  }
+  输出：
+    程序开始
+    开始检查年龄
+    处理：年龄不能为负！
+    程序结束
+
+─── 银行取款串联例子（三者结合）────────────────────────────────
+
+  class BankAccount {
+      private double balance = 100;
+
+      // throws：声明"取款可能出错"，调用方要做好准备
+      public void withdraw(double amount) throws Exception {
+          if (amount > balance) {
+              throw new Exception("余额不足！");   // throw：主动抛出
+          }
+          balance -= amount;
+          System.out.println("取款成功，剩余：" + balance);
+      }
+
+      public static void main(String[] args) {
+          BankAccount account = new BankAccount();
+          try {
+              account.withdraw(200);               // 取200，余额不够，触发 throw
+              System.out.println("交易完成");       // ❌ 不执行
+          } catch (Exception e) {
+              System.out.println("处理：" + e.getMessage()); // ✅ 输出：余额不足！
+          } finally {
+              System.out.println("ATM 操作结束");  // ✅ 一定执行（相当于退卡关门）
+          }
+      }
+  }
+
+本项目中的对应：
+  throw  → BaseAgent.run() 里：throw new AgentException("任务不能为空")
+  throws → AgentException 继承 RuntimeException，不需要 throws 声明
+           （RuntimeException = 非受检异常，调用方不强制处理）
+  try-catch → run() 包住 Agent Loop，捕获 step() 执行中的网络/工具异常
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【知识点③】log 日志 vs System.out.println
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+System.out.println 的问题：
+  就像在家里大喊一声——没有时间、没有级别、没有文件记录、无法关闭
+  ❌ 上线后无法屏蔽，大量打印拖慢性能
+  ❌ 没有时间戳、线程、类名、行号
+  ❌ 无法自动把异常堆栈打印出来
+  ✅ 仅适合临时调试、初学练习
+
+log 日志的 5 个级别（优先级从高到低）：
+
+  log.error → 🔴 系统出故障，必须马上处理      "AI 调用失败"
+  log.warn  → 🟡 有隐患，程序还能跑            "步骤数快到上限了"
+  log.info  → 🔵 关键业务流程，正常记录        "第3步执行完成"
+  log.debug → ⚪ 开发调试细节，上线自动关       "变量值 = xxx"
+  log.trace → ⚫ 最详细跟踪，极少使用
+
+门槛级别（重点）：
+  配置文件设置门槛，只输出 ≥ 门槛的日志：
+
+    开发环境设 DEBUG → 看到所有细节
+    生产环境设 INFO  → 只记关键信息，屏蔽 debug，提升性能
+
+  示例（application.yml）：
+    logging:
+      level:
+        root: INFO           # 全局 INFO 及以上
+        com.yupi: DEBUG      # 自己的包保留 DEBUG
+
+log.error 和 System.out.println 的核心区别：
+
+  System.out.println("出错了: " + e.getMessage());
+    → 只打印一行文字，看不出哪行代码出的错
+
+  log.error("出错了", e);
+    → 第二个参数 e 让日志框架自动打印完整堆栈（哪个文件、第几行）
+    → 排查 Bug 快 10 倍
+
+对比总结：
+  ┌─────────────────┬──────────────────┬──────────────────┐
+  │ 对比项          │ System.out       │ log              │
+  ├─────────────────┼──────────────────┼──────────────────┤
+  │ 级别控制        │ ❌ 没有          │ ✅ 5 个级别      │
+  │ 可开关          │ ❌ 不能          │ ✅ 配置即可      │
+  │ 时间/线程/类名  │ ❌ 没有          │ ✅ 自动          │
+  │ 打印异常堆栈    │ ❌ 需手动        │ ✅ 传 e 即可     │
+  │ 输出到文件      │ ❌ 困难          │ ✅ 轻松          │
+  │ 企业项目        │ ❌ 禁止使用      │ ✅ 标准做法      │
+  └─────────────────┴──────────────────┴──────────────────┘
+
+使用示例（本项目 BaseAgent.java）：
+  log.info("Executing step {}/{}", stepNumber, maxSteps); // 正常流程记录
+  log.error("error executing agent", e);                  // 出错时记录完整堆栈
+
+
+════════════════════════════════════════════════════════════════════
+  知识点①②③对应代码位置：
+    BaseAgent.java → 类注释（抽象类）、run() 方法（try-catch、log）
+    AgentException.java → throw / throws / RuntimeException 说明
+════════════════════════════════════════════════════════════════════
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【知识点④】流式输出是什么 —— 0基础生活类比
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+核心思想：不等全部生成完，生成一点发一点。
+
+─── 生活类比 ────────────────────────────────────────────────────
+
+  非流式 = 等餐厅出菜
+    你点了10道菜 → 厨房全做完 → 一次性端上来 → 等了30分钟才能吃
+
+  流式 = 炒好一道上一道
+    第1道做好 → 立刻端上来 → 你先吃着
+    第2道做好 → 立刻端上来 → ...
+
+─── AI 对话场景 ──────────────────────────────────────────────────
+
+  非流式：
+    用户："帮我介绍上海"
+    → AI 在后台想了8秒
+    → 用户盯着空白等8秒 😩
+    → 一次性收到完整段落
+
+  流式：
+    用户："帮我介绍上海"
+    → t=50ms  显示："上"
+    → t=100ms 显示："上海"
+    → t=150ms 显示："上海是"
+    → t=200ms 显示："上海是国际"
+    → t=250ms 显示："上海是国际大都市..."
+    → 像打字机效果，用户第50ms就看到内容 😊
+
+─── 两种方式对比 ────────────────────────────────────────────────
+
+  ┌────────────┬──────────────────────┬──────────────────────┐
+  │            │ 非流式（同步）        │ 流式                  │
+  ├────────────┼──────────────────────┼──────────────────────┤
+  │ 返回时机   │ 全部生成完才返回      │ 生成一点返回一点      │
+  │ 用户体验   │ 等待时间长            │ 立刻有反馈            │
+  │ 适合场景   │ 内容短、不在意等待    │ 内容长、追求即时感    │
+  │ 代码返回值 │ String                │ Flux<String>          │
+  └────────────┴──────────────────────┴──────────────────────┘
+
+对应代码：AiController.java
+  同步方法：doChatWithLoveAppSync()     → 返回 String
+  流式方法：doChatWithLoveAppSSE()      → 返回 Flux<String>
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【知识点⑤】SSE（Server-Sent Events）服务器推送
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+─── HTTP 的问题 ──────────────────────────────────────────────────
+
+  普通 HTTP = 一问一答：
+    浏览器：请问现在几点？ → 服务器：3点。 → 连接断开
+    浏览器：请问现在几点？ → 服务器：3点01。 → 连接断开
+    （浏览器要不停发请求，叫"轮询"，很浪费资源）
+
+  SSE = 广播电台：
+    浏览器：我要订阅你的节目 → 连接建立，一直保持
+    服务器：（随时）播报新内容 → 浏览器持续接收
+    （服务器主动推，不需要浏览器反复问）
+
+─── SSE vs WebSocket ────────────────────────────────────────────
+
+  SSE：       服务器 → 浏览器（单向）  适合 AI 流式回复
+  WebSocket： 服务器 ↔ 浏览器（双向）  适合聊天室、实时游戏
+
+─── SSE 数据格式（浏览器实际收到的原始内容）────────────────────
+
+  普通 Flux<String> 推送的数据：
+    data: 上海\n\n
+    data: 适合\n\n
+    data: 约会\n\n
+
+  Flux<ServerSentEvent<String>> 推送的数据（带"快递单"）：
+    id: 1\n
+    event: message\n
+    data: 上海\n\n
+
+    id: 2\n
+    event: message\n
+    data: 适合\n\n
+
+─── ServerSentEvent 多了"快递单"有什么用 ────────────────────────
+
+  ① 断线重连：
+     没有 id → 断线重连只能从头开始，用户看到重复内容
+     有 id  → 浏览器断线重连时自动带上 Last-Event-ID: 15
+              服务器从第16条继续发，不丢不重
+
+  ② 多事件类型区分：
+     event: message  → 普通聊天内容，显示在对话框
+     event: thinking → AI 思考中，显示"加载中..."
+     event: error    → 出错通知，弹出错误提示
+
+─── 什么时候用哪种 ──────────────────────────────────────────────
+
+  Flux<String>                → 简单场景，代码最少
+  Flux<ServerSentEvent>       → 生产环境，需要断点续传或多类型事件
+  SseEmitter（见知识点⑥）    → 非响应式体系（传统 Servlet），手动控制推送
+
+对应代码：AiController.java
+  方式一：doChatWithLoveAppSSE()               → Flux<String>
+  方式二：doChatWithLoveAppServerSentEvent()   → Flux<ServerSentEvent<String>>
+  方式三：doChatWithLoveAppServerSseEmitter()  → SseEmitter
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【知识点⑥】SseEmitter —— 手动控制的 SSE 推送器
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SseEmitter 是 Spring MVC（传统 Servlet 体系）提供的推送器，
+可以在任意时刻手动 send() 推送数据。
+与 Flux 的区别：Flux 属于 WebFlux 响应式体系，SseEmitter 属于传统 Servlet 体系。
+
+─── 代码逐行拆解（带真实数据）──────────────────────────────────
+
+  代码：
+    SseEmitter emitter = new SseEmitter(180000L);
+
+  理解：
+    在门口装好一个外卖柜（推送通道）
+    180000L = 180000毫秒 = 3分钟（超时后自动关门，防止连接永久占用资源）
+    此时浏览器还没收到任何数据
+
+  ─────────────────────────────────────────────────────────────
+
+  代码：
+    loveApp.doChatByStream(message, chatId)
+        .subscribe(
+            chunk -> {
+                try {
+                    emitter.send(chunk);          // ① 正常推送
+                } catch (IOException e) {
+                    emitter.completeWithError(e); // ② 推送失败
+                }
+            },
+            emitter::completeWithError,           // ③ 上游出错
+            emitter::complete                     // ④ 全部完成
+        );
+
+  理解（带真实数据）：
+    subscribe() = 打开厨房开关，AI 开始做菜（生成文字）
+
+    AI 生成 "上海" → chunk = "上海" → emitter.send("上海")
+                                    → 浏览器收到：上海
+
+    AI 生成 "适合" → chunk = "适合" → emitter.send("适合")
+                                    → 浏览器收到：上海适合
+
+    AI 生成 "约会" → chunk = "约会" → emitter.send("约会")
+                                    → 浏览器收到：上海适合约会
+
+    AI 生成完毕   → 触发 emitter.complete()
+                  → 浏览器：收完了，关闭连接
+
+    中途网络断了  → 触发 emitter.completeWithError(e)
+                  → 浏览器：出错了，显示错误信息
+
+  ─────────────────────────────────────────────────────────────
+
+  代码：
+    return emitter;
+
+  理解：
+    立刻把外卖柜钥匙给浏览器（此时 AI 还在后台继续生成！）
+    浏览器拿到钥匙后自己守着柜子等，数据持续流入
+
+─── 完整时间线 ──────────────────────────────────────────────────
+
+  t=0ms    → 方法被调用，new SseEmitter()
+  t=1ms    → subscribe() 触发 AI 开始生成
+  t=2ms    → return emitter，浏览器建立连接（AI 仍在后台）
+  t=50ms   → AI 生成 "上海"，emitter.send("上海")   浏览器显示：上海
+  t=100ms  → AI 生成 "适合"，emitter.send("适合")   浏览器显示：上海适合
+  t=150ms  → AI 生成 "约会"，emitter.send("约会")   浏览器显示：上海适合约会
+  t=200ms  → AI 生成完毕，emitter.complete()        浏览器：连接关闭
+
+─── subscribe() 三个参数说明 ────────────────────────────────────
+
+  .subscribe(
+      正常数据处理,   // 每来一条数据时触发（AI每生成一个字触发一次）
+      异常处理,       // 上游出错时触发（网络断、API报错等）
+      完成处理        // 上游正常结束时触发（AI全部生成完毕）
+  )
+
+  这三个参数的写法：
+    chunk -> emitter.send(chunk)            Lambda 写法（有 try-catch 包裹）
+    emitter::completeWithError              方法引用写法（等价 e -> emitter.completeWithError(e)）
+    emitter::complete                       方法引用写法（等价 () -> emitter.complete()）
+
+对应代码：AiController.doChatWithLoveAppServerSseEmitter()
+          BaseAgent.runStream()（YuManus Agent 的流式方法）
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【知识点⑦】Flux —— 响应式数据流
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Flux 来自 Project Reactor 库，是 Spring WebFlux 的核心。
+用于处理"随时间陆续到来的数据"，是 Java Stream 的异步版本。
+
+─── Flux vs List 的区别 ─────────────────────────────────────────
+
+  List<String>  = 一箱苹果（一次性全给你，已经全部准备好了）
+  Flux<String>  = 苹果树（苹果一个一个成熟，成熟一个摘一个）
+
+─── 重要：Flux 默认不执行！ ─────────────────────────────────────
+
+  Flux<String> flux = Flux.just("上海", "适合", "约会");
+  // 此时什么都没发生！只是定义了"数据从哪来"
+  // 就像菜谱，只是一张纸，还没开始做菜
+
+  flux.subscribe(s -> System.out.println(s));
+  // 现在才开始执行！subscribe = 开始做菜
+  // 输出：上海  适合  约会（每个单独一行）
+
+─── Flux 的三个事件 ─────────────────────────────────────────────
+
+  onNext(数据)   → 来一条数据了，处理它（正常情况，可触发多次）
+  onError(异常)  → 出错了，处理异常（触发后流终止）
+  onComplete()   → 全部发完了，收尾（触发后流终止）
+
+─── 带数据的 Demo ───────────────────────────────────────────────
+
+  Flux<String> aiStream = Flux.just("上", "海", "适", "合", "约", "会");
+
+  aiStream
+      .map(chunk -> "[" + chunk + "]")         // 每个字加方括号
+      .subscribe(
+          chunk -> System.out.print(chunk),    // 正常：打印每个字
+          err   -> System.out.println("出错:" + err.getMessage()), // 异常处理
+          ()    -> System.out.println(" 完成！")                   // 完成收尾
+      );
+
+  输出：[上][海][适][合][约][会] 完成！
+
+─── .map() 操作 ─────────────────────────────────────────────────
+
+  .map() = 流水线上的加工机器，对每个数据做转换，不改变数量
+
+  原料流：  "上海"     →    "适合"     →    "约会"
+               ↓ map（加方括号）
+  成品流：  "[上海]"   →   "[适合]"   →   "[约会]"
+
+  代码：
+    .map(chunk -> ServerSentEvent.<String>builder()
+                      .data(chunk)
+                      .build())
+  理解：
+    每个 String 片段 → 包装成 ServerSentEvent 对象
+    就像把散装苹果一个个装进礼盒
+
+对应代码：AiController.doChatWithLoveAppServerSentEvent() 里的 .map()
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【知识点⑧】Lambda 表达式 与 方法引用
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Lambda 是 Java 8 引入的，让你用更短的写法传入"要做什么事"。
+
+─── 格式 ────────────────────────────────────────────────────────
+
+  (参数) -> 处理逻辑
+
+  箭头左边 = 输入的数据
+  箭头右边 = 对这个数据做什么
+
+─── 对比：老写法 vs Lambda 写法 ─────────────────────────────────
+
+  场景：对每个字符串打印出来
+
+  // 老写法（匿名内部类，冗长）
+  list.forEach(new Consumer<String>() {
+      @Override
+      public void accept(String s) {
+          System.out.println(s);
+      }
+  });
+
+  // Lambda 写法（简洁）
+  list.forEach(s -> System.out.println(s));
+
+  // 方法引用写法（更简洁，只调一个现有方法时用）
+  list.forEach(System.out::println);
+
+─── 本项目中的 Lambda 例子（带数据理解）────────────────────────
+
+  // 例1：filter 过滤
+  .filter(name -> name.contains("爱"))
+  // name = "小明爱你" → true  → 保留
+  // name = "张三"     → false → 丢弃
+
+  // 例2：map 转换
+  .map(chunk -> "[" + chunk + "]")
+  // chunk = "上海" → "[上海]"
+  // chunk = "约会" → "[约会]"
+
+  // 例3：subscribe 正常处理
+  chunk -> emitter.send(chunk)
+  // chunk = "上海" → 执行 emitter.send("上海")
+
+  // 例4：subscribe 完成处理（无参数 Lambda）
+  () -> emitter.complete()
+  // 不需要输入参数，直接执行 emitter.complete()
+
+─── 方法引用 :: 写法 ────────────────────────────────────────────
+
+  当 Lambda 只是调用一个已有方法，可以再简写：
+
+  // Lambda 写法
+  error -> emitter.completeWithError(error)
+  // 方法引用写法（等价）
+  emitter::completeWithError
+
+  // Lambda 写法
+  () -> emitter.complete()
+  // 方法引用写法（等价）
+  emitter::complete
+
+  // Lambda 写法
+  s -> System.out.println(s)
+  // 方法引用写法（等价）
+  System.out::println
+
+  记忆规则：
+    对象::方法名    → 调用某个对象的方法
+    类名::方法名    → 调用类的静态方法
+
+对应代码：AiController.java 中 .subscribe() 的三个参数
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【知识点⑨】Java Stream（集合处理）vs Flux（响应式流）区别
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+两个都叫"流"，但完全不同！
+
+  ┌──────────────┬──────────────────────┬──────────────────────┐
+  │              │ Java Stream          │ Flux                 │
+  ├──────────────┼──────────────────────┼──────────────────────┤
+  │ 来自         │ JDK 自带 (java.util) │ Project Reactor 库   │
+  │ 处理对象     │ 内存中的集合          │ 随时间到来的异步数据  │
+  │ 是否异步     │ 同步（阻塞）          │ 异步（非阻塞）        │
+  │ 数据源       │ 已知的 List/数组      │ 网络/AI/定时器等      │
+  │ 典型用法     │ filter/map/collect   │ subscribe/map/merge  │
+  │ 执行时机     │ 调用终止操作时        │ 调用 subscribe() 时  │
+  └──────────────┴──────────────────────┴──────────────────────┘
+
+  Java Stream 例子：
+    List<String> names = List.of("小明爱你", "张三", "爱情攻略");
+    names.stream()
+         .filter(n -> n.contains("爱"))   // 过滤含"爱"的
+         .collect(Collectors.toList());   // 结果：["小明爱你", "爱情攻略"]
+
+  Flux 例子：
+    Flux<String> aiStream = loveApp.doChatByStream("你好", "abc");
+    aiStream.subscribe(chunk -> emitter.send(chunk));
+    // AI 每生成一个字，触发一次 subscribe 里的处理逻辑
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【知识点⑩】produces = MediaType.TEXT_EVENT_STREAM_VALUE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  @GetMapping(value = "/love_app/chat/sse",
+              produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+
+produces = 这个接口返回的数据格式（Content-Type）
+
+  "application/json"       → 返回 JSON 格式（最常见）
+  "text/plain"             → 返回纯文本
+  "text/event-stream"      → 返回 SSE 流（持续推送）
+       ↑
+  MediaType.TEXT_EVENT_STREAM_VALUE 就是这个字符串的常量，
+  用常量而不是手写字符串，可以避免拼写错误。
+
+不加 produces 会怎样？
+  浏览器默认认为"数据一次性返回"，收到第一个数据包后就关闭连接，
+  后续推送的内容全部丢失。
+
+加了 produces = "text/event-stream" 的效果：
+  浏览器知道"这是流式推送，别关连接"，
+  持续接收服务器推送的每一个数据包，直到服务器调用 complete()。
+
+对应代码：AiController.doChatWithLoveAppSSE() 的注解
+
+
+════════════════════════════════════════════════════════════════════
+  知识点对应代码位置（完整）：
+    ①抽象类       → BaseAgent / ReActAgent / ToolCallAgent / YuManus
+    ②try-catch    → BaseAgent.run() / ReActAgent.step()
+    ③日志         → BaseAgent / ToolCallAgent（log.info / log.error）
+    ④流式概念     → AiController（sync vs sse 方法对比）
+    ⑤SSE推送      → AiController.doChatWithLoveAppSSE/ServerSentEvent()
+    ⑥SseEmitter   → AiController.doChatWithLoveAppServerSseEmitter()
+                     BaseAgent.runStream()
+    ⑦Flux         → AiController 所有流式方法 / LoveApp.doChatByStream()
+    ⑧Lambda/::    → AiController.subscribe() 三个参数
+    ⑨Stream vs Flux → 概念对比（无单一对应文件）
+    ⑩produces     → AiController.doChatWithLoveAppSSE() 注解
+    ⑪Lambda subscribe stream 深度解析 → 见下方新增章节
+════════════════════════════════════════════════════════════════════
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【知识点⑪】Lambda + Stream + subscribe 精讲
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+═══════════════════════════════
+一、Lambda —— 传"做什么"的简短写法
+═══════════════════════════════
+
+  格式：(参数) -> { 方法体 }
+
+  // 老写法：6行
+  list.forEach(new Consumer<String>() {
+      @Override
+      public void accept(String s) { System.out.println(s); }
+  });
+
+  // Lambda：1行，完全等价
+  list.forEach(s -> System.out.println(s));
+
+  // 方法引用：更简洁（Lambda 里只调一个方法时可用）
+  list.forEach(System.out::println);
+
+  省略规则：
+    参数只有1个 → 括号可省：  s -> ...
+    方法体只有1行 → 花括号可省：s -> doSth()
+    参数0个     → 括号不能省：() -> doSth()
+
+  记忆：Lambda 只调一个方法 → 换成 对象::方法名
+        Lambda 里有 try-catch → 不能用 ::，只能用 Lambda
+
+
+═══════════════════════════════
+二、Flux + subscribe —— 流式数据的"开关"
+═══════════════════════════════
+
+  核心：Flux 不 subscribe 不执行，subscribe 才是真正的"开火"按钮。
+
+  // ① Flux：只是配方，AI 还没被调用
+  Flux<String> stream = loveApp.doChatByStream("帮我介绍上海", "chat1");
+
+  // ② subscribe：开始执行，AI 启动，每生成一个 token 触发一次 Lambda
+  stream.subscribe(chunk -> System.out.println(chunk));
+  // 输出：上  海  是  国  际  大  都  市  ...（每个 token 一行）
+
+─── subscribe() 三个参数 ───────────────────────────────────────
+
+  stream.subscribe(
+      chunk -> { ... },        // onNext：每来一个数据触发（可触发多次）
+      error -> { ... },        // onError：出错触发，触发后流终止
+      () -> { ... }            // onComplete：全部完成触发，触发后流终止
+  );
+  // onError 和 onComplete 互斥，只会触发其中一个
+
+─── 本项目完整 Demo（AiController.java）───────────────────────
+
+  SseEmitter sseEmitter = new SseEmitter(180000L);  // 创建推送通道
+
+  loveApp.doChatByStream(message, chatId)
+      .subscribe(
+          chunk -> {                          // onNext：AI每生成一个token触发
+              try {
+                  sseEmitter.send(chunk);     // 推给浏览器，用户看到打字机效果
+              } catch (IOException e) {
+                  sseEmitter.completeWithError(e);
+              }
+          },
+          sseEmitter::completeWithError,      // onError：AI报错 → 关闭连接
+          sseEmitter::complete                // onComplete：AI说完 → 正常关闭
+      );
+
+  return sseEmitter;   // 立刻返回通道（AI 仍在后台生成，浏览器持续接收）
+
+  执行时间线：
+    t=0ms   subscribe() → AI 开始生成
+    t=2ms   return sseEmitter → 浏览器建立连接
+    t=50ms  AI 生成"上" → onNext → send("上")  → 浏览器显示：上
+    t=80ms  AI 生成"海" → onNext → send("海")  → 浏览器显示：上海
+    t=110ms AI 生成"是" → onNext → send("是")  → 浏览器显示：上海是
+    ...
+    t=3s    AI 完成 → onComplete → complete() → 连接关闭
+
+  为什么 onNext 用 Lambda 而不用 ::：
+    send() 抛 IOException（往网络写数据随时可能失败），
+    必须 try-catch，有额外逻辑就不能简写为 ::。
+
+  为什么 return emitter 在 subscribe 之后：
+    subscribe 是异步的，AI 在后台线程生成。
+    先 return 把通道给浏览器，浏览器才能接收后续推送，顺序不能反。
+
+
+═══════════════════════════════
+三、Java Stream —— 集合的流水线处理
+═══════════════════════════════
+
+  集合.stream() → 一系列中间操作（map/filter）→ 终止操作（collect/anyMatch）
+
+─── .map()：一对一转换，数量不变 ──────────────────────────────
+
+  // 每个元素加方括号
+  List<String> result = List.of("上海", "适合", "约会").stream()
+      .map(s -> "[" + s + "]")
+      .collect(Collectors.toList());
+  // result = ["[上海]", "[适合]", "[约会]"]
+
+  // 本项目：String → ServerSentEvent（AiController.java）
+  loveApp.doChatByStream(message, chatId)
+      .map(chunk -> ServerSentEvent.<String>builder().data(chunk).build());
+
+─── .filter()：按条件筛选，数量可能减少 ───────────────────────
+
+  // 只保留含"爱"的
+  List<String> result = List.of("小明爱你", "张三", "爱情攻略").stream()
+      .filter(s -> s.contains("爱"))   // true保留，false丢弃
+      .collect(Collectors.toList());
+  // result = ["小明爱你", "爱情攻略"]
+
+─── .collect(Collectors.joining())：拼成字符串 ─────────────────
+
+  // 本项目（ToolCallAgent.java）：把工具列表拼成一段日志
+  String info = toolCallList.stream()
+      .map(t -> "工具：" + t.name() + "，参数：" + t.arguments())
+      .collect(Collectors.joining("\n"));
+  // 输出：
+  //   工具：webSearch，参数：{"query":"上海天气"}
+  //   工具：fileOperation，参数：{"path":"/tmp/a.txt"}
+
+─── .anyMatch()：有一个满足就返回 true（短路）────────────────
+
+  // 本项目（ToolCallAgent.java）：检测 AI 是否调了终止工具
+  boolean done = toolResponseMessage.getResponses().stream()
+      .anyMatch(r -> r.name().equals("doTerminate"));
+  // 找到一个 doTerminate 立刻返回 true，后面的不再检查
+  if (done) setState(AgentState.FINISHED);
+
+  anyMatch / allMatch / noneMatch：
+    anyMatch → 有一个满足就是 true（OR）
+    allMatch → 全部满足才是 true（AND）
+    noneMatch → 全部不满足才是 true（NOT）
+
+
+════════════════════════════════════════════════════════════════════
+  代码位置：
+    subscribe + Lambda → AiController.java 第157~168行
+    .map() SSE 包装   → AiController.java 第118~122行
+    .collect/joining  → ToolCallAgent.java 第176~179行
+    .anyMatch         → ToolCallAgent.java 第233~234行
+════════════════════════════════════════════════════════════════════

@@ -1,0 +1,62 @@
+{
+  "mcpServers": {
+
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/Users/C5402760/learn-genai-java/06-SpringAIForBeginners/08-yu-ai-agent/mcp/tmp"
+      ],
+      "env": {
+        "npm_config_registry": "https://registry.npmjs.org"
+      }
+    },
+
+    "memory": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-memory"
+      ],
+      "env": {
+        "npm_config_registry": "https://registry.npmjs.org"
+      }
+    },
+
+    "fetch": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-fetch"
+      ],
+      "env": {
+        "npm_config_registry": "https://registry.npmjs.org"
+      }
+    },
+
+    "puppeteer": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-puppeteer"
+      ],
+      "env": {
+        "npm_config_registry": "https://registry.npmjs.org"
+      }
+    },
+
+    "yu-image-search-mcp-server": {
+      "command": "java",
+      "args": [
+        "-Dspring.ai.mcp.server.stdio=true",
+        "-Dspring.main.web-application-type=none",
+        "-Dlogging.pattern.console=",
+        "-jar",
+        "yu-image-search-mcp-server/target/yu-image-search-mcp-server-1.0.0.jar"
+      ],
+      "env": {}
+    }
+
+  }
+}
